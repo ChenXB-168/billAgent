@@ -1,0 +1,87 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ---- 虚拟环境 ----
+venv/
+env/
+.venv/
+
+# ---- 测试 / 缓存 / 覆盖率 ----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+htmlcov/
+
+# ---- IDE / 编辑器 ----
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---- 日志与运行时产物 ----
+logs/
+*.log
+
+# ---- 环境变量与密钥（绝不提交）----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- 数据库：本地数据、运行时影子文件与备份（含个人账单数据，不入库）----
+*.sqlite3
+*.db
+*.db-*
+*.db.bak_*
+
+# ---- 本地索引 / Pickle 缓存（运行时生成，可随时重建）----
+userDocs/.index/
+*.pkl
+
+# ---- 系统文件 ----
+.DS_Store
+Thumbs.db
+
+# ---- 大模型权重 / 模型文件（体积极大，不入库；如需管理请用 Git LFS）----
+*.safetensors
+*.onnx
+*.gguf
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.npz
+
+# ---- 个人中文文档 / 资料（不上传；如需保留某项，请删除对应行）----
+/设计/
+/设计_从零系列/
+/userDocs/
+/踩坑记录.md
+/多Agent系统学习.md
+/工具接入平台与MCP系统学习.md
+/实施计划_需求闭环.md
+/腾讯PCG_Agent岗位对标评估.md
+/腾讯PCG_SSP冲击可行性分析.md
+/项目进度快照_20260816.md
+/项目现状评估.md
+/LangGraph面试冲刺_腾讯PCG.md
+/测试报告.md
+/测试报告_总览.md
+/代码阅读路线.md
+
+# ---- CodeBuddy 本地项目数据 ----
+.codebuddy/

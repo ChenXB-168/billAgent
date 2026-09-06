@@ -1,0 +1,50 @@
+# ===================== 基础工具 & 数据库 =====================
+pysqlite3>=0.5.3
+sqlalchemy>=2.0.0
+loguru>=0.7.2
+pandas>=2.0.0
+
+# ===================== 数值计算（固定1.x版本，兼容旧torch） =====================
+numpy==1.26.4
+
+# ===================== AI 框架 & 模型依赖（CPU专用） =====================
+# 注意：torch/torchvision/torchaudio 必须单独用PyTorch官方CPU源安装
+transformers==4.32.0
+transformers_stream_generator==0.0.4
+#后续微调需要装以下三个
+accelerate==0.24.0
+bitsandbytes==0.41.1
+peft==0.6.0
+
+# ===================== RAG & 向量库 =====================
+faiss-cpu>=1.7.0
+# 必须锁 2.2.2：更高版本依赖新 huggingface-hub API（cached_download 等），与下方 hub 0.20.3 不匹配
+sentence-transformers==2.2.2
+rank_bm25==0.2.2
+
+# ===================== 多Agent框架 =====================
+langgraph>=0.2.0
+langchain>=0.2.0
+
+# ===================== 前端UI =====================
+# WebUI 一键启动依赖以下**配套锁定**组合（本机为 torch 2.0.1 / transformers 4.32 CPU 套装），严禁单独升级：
+#   - gradio 6.x 需 huggingface-hub>=1.x 与本套装硬冲突（gradio 4.44 已是支持 Chatbot(type="messages") 的最高可用线）
+#   - gradio_client 1.3.0 存在"布尔 JSON-Schema"解析缺陷 -> 运行时已由 utils/gradio_compat.py 打补丁
+#   - fastapi/starlette 若漂移到新版会因 TemplateResponse API 变更导致页面 500、launch 自检失败退出
+gradio==4.44.1
+gradio-client==1.3.0
+fastapi==0.115.6
+huggingface-hub==0.20.3
+
+# ===================== 系统辅助 =====================
+python-dotenv>=1.0.0
+
+# MCP 协议
+mcp>= 1.20
+
+# 会话记忆
+redis>=5.2
+
+# 网络请求
+requests>=2.31.0
+

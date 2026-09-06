@@ -1,0 +1,76 @@
+version: '3.8'
+
+# 统一网络：所有容器加入同一网桥，容器内互通，外部按需暴露
+networks:
+  bill_agent_net:
+    driver: bridge
+
+# 数据卷：持久化数据，容器删除数据不丢失
+volumes:
+  ollama_data:          # Ollama 模型持久化（GGUF/私有模型）
+  redis_data:           # Redis 会话数据持久化
+  app_logs:             # 项目日志持久化
+  app_database:         # SQLite 数据库持久化
+
+services:
+  # 1. Ollama 服务：本地大模型运行环境（常驻）
+  ollama:
+    image: ollama/ollama:latest
+    container_name: bill-ollama
+    restart: always
+    networks:
+      - bill_agent_net
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"  # 对外暴露默认端口，本地开发直接访问
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_PORT=11434
+    # 资源限制（根据机器配置调整，低配机器可删除）
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4G
+
+  # 2. Redis 服务：短期会话记忆、上下文存储
+  redis:
+    image: redis:alpine
+    container_name: bill-redis
+    restart: always
+    networks:
+      - bill_agent_net
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes  # 开启AOF持久化
+
+  # 3. 项目主服务：记账AI中台（Python 应用）
+  bill-agent-app:
+    build:
+      context: .                # 构建上下文：项目根目录
+      dockerfile: Dockerfile    # 关联同级 Dockerfile
+    container_name: bill-agent-main
+    restart: always
+    depends_on:
+      - ollama
+      - redis                   # 等待 ollama、redis 启动后再启动应用
+    networks:
+      - bill_agent_net
+    volumes:
+      - ./:/app                 # 代码热挂载（开发模式）
+      - app_logs:/app/logs      # 日志目录挂载
+      - app_database:/app/database  # 数据库文件挂载
+    # 环境变量：对齐 config.py 配置，覆盖默认地址（容器内域名访问）
+    environment:
+      - OLLAMA_HOST=ollama      # 容器内使用服务名访问Ollama，无需IP
+      - OLLAMA_PORT=11434
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    # 如需对外暴露WebUI端口，放开下面配置（Gradio默认7860）
+    ports:
+      - "7860:7860"
+    # 启动命令：运行项目入口
+    command: python main.py

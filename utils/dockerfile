@@ -1,0 +1,28 @@
+# 基础镜像：Python3.10 精简版（兼容所有依赖，体积小）
+FROM python:3.10-slim
+
+# 设置工作目录
+WORKDIR /app
+
+# 系统依赖安装（解决sqlite、编译依赖问题）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# 全局设置Python环境
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# 复制依赖文件 & 安装依赖
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 复制项目全部代码
+COPY . .
+
+# 暴露WebUI端口（Gradio）
+EXPOSE 7860
+
+# 默认启动命令（和compose中command保持一致）
+CMD ["python", "main.py"]
