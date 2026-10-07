@@ -1,0 +1,48 @@
+name: test
+
+# 触发时机：push 到主分支 / 任何 PR / 手动触发
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+          # torch 不在 requirements.txt 内（项目约定：必须用 PyTorch 官方 CPU 源单独装），
+          # 但 sentence-transformers / embedding 相关单测依赖它，故此处显式补装 CPU 版。
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      # ① 契约漂移检测：设计文档里写的符号/行号/签名必须与代码一致
+      #    成本低、不需外部服务，放在单测之前做快速失败
+      - name: 契约漂移检测（contract_check）
+        run: |
+          python utils/contract_check.py
+
+      # ② 单元测试 + 覆盖率统计
+      #    只统计业务代码，不统计 tests/ 自身（否则虚高）
+      #    --cov-report=term-missing 会列出未覆盖的行号，便于定位薄弱区
+      - name: 单元测试 + 覆盖率
+        run: |
+          pytest tests/unit -q \
+            --cov=agents --cov=mcpGateway --cov=startup \
+            --cov=utils --cov=memory --cov=coreModules \
+            --cov-report=term-missing

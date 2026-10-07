@@ -1,0 +1,77 @@
+# ===================== 覆盖率产物 =====================
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+
+# ===================== Python 字节码 / 虚拟环境 =====================
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+venv/
+.venv/
+env/
+
+# ===================== 临时脚本与调试产物 =====================
+# 约定：以 _ 开头的 .py/.log/.txt/.json 为一次性脚本或调试输出，不入库
+#   （**任意层级**均生效，例：bench/_probe_serial.txt、tests/fixtures/_gen_user_docs_notes.py、
+#     简历/_gen_resume_docx.py）。
+# ★必须显式放行 __init__.py —— 它同样以 `_` 开头，会被 `_*.py` 误伤。
+#   若不放行，执行 `git rm -r --cached . && git add -A` 会让各包的 __init__.py
+#   （当前共 22 个）从仓库消失、包结构损坏（这是本文件里最容易踩的坑）。
+_*.py
+!__init__.py
+_*.log
+_*.txt
+_*.json
+benchmark_result*.txt
+
+# ===================== 环境变量（含 API 密钥，切勿提交） =====================
+.env
+.env.local
+
+# ===================== 数据库运行时文件 =====================
+# SQLite 的 WAL/SHM 是运行时产物，随 -wal checkpoint 生成，不入库
+*.db-shm
+*.db-wal
+
+# ===================== 日志 =====================
+logs/*.log
+*.err
+
+# ===================== IDE / 系统 =====================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ===================== 模型权重（体积大，不入库） =====================
+# ★为什么必须忽略：modelService 下的权重合计约 6.7 GB，一旦被 `git add -A`
+#   带入提交，`git push` 会因 GitHub 的「单次推送包 ≤ 2 GiB」硬上限被直接拒绝：
+#     remote: fatal: pack exceeds maximum allowed size (2.00 GiB)
+#     error: remote unpack failed: index-pack failed
+#   （且单文件 > 100 MB 同样会被拒 —— 本仓最大的 safetensors 有 1.9 GB）
+#
+# ★范围必须精确到「文件」，**切勿**写成 modelService/llm/ 整个目录：
+#   ① modelService/ 根目录是代码（chat_model.py / embedding_loader.py / llm_loader.py /
+#      load.py / rerank_loader.py / router.py / __init__.py）；
+#   ② modelService/llm/ 下**同时有 Qwen 模型代码**（config.json / modeling_qwen.py /
+#      tokenization_qwen.py / qwen_generation_utils.py / model.safetensors.index.json /
+#      README.md / assets 等）—— 这些已在远端仓库中，整目录忽略会让它们从仓库消失。
+#   故：embedding/*/ 是纯权重目录（可整体忽略）；llm/ 只能按权重文件名精确忽略。
+modelService/embedding/*/
+modelService/llm/*.safetensors
+modelService/llm/*.bin
+modelService/llm/*.pt
+
+# 兜底：任何位置出现权重文件都不入库（防止将来更换模型目录时漏配）
+*.safetensors
+*.onnx
+*.h5
+*.msgpack
+*.ckpt
+
+# ★说明：database/ 与 userDocs/ 下的数据按本项目约定**保留入库**（测试数据），
+#   故此处不忽略；如需排除请另行确认后再加规则。

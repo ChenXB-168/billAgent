@@ -1,0 +1,17 @@
+{
+  "models": [
+    {
+      "id": "hy4-preview",
+      "name": "Hy4 preview (混元4)",
+      "vendor": "Tencent",
+      "apiKey": "sk-AUePDslYstQrozcGUv5idTFP3pNgVlhVSZUwELAxq7ycYlHX",
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 8192,
+      "url": "https://tokenhub.tencentmaas.com/v1/chat/completions",
+      "temperature": 0.9,
+      "supportsToolCall": true,
+      "supportsImages": false,
+      "supportsReasoning": true
+    }
+  ]
+}

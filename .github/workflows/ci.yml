@@ -1,0 +1,76 @@
+# ============================================================
+# CI：契约漂移检查 + 单元测试（L1）
+# ------------------------------------------------------------
+# 设计原则：
+#   1. **只跑零外部依赖的检查** —— unit 层不连模型、不连 MCP 服务（依据 README §10），
+#      故 CI 无需 API Key、无需 Ollama、无需模型权重；integration / e2e 需真实服务，
+#      不在本流水线内（后续可加 nightly 任务）。
+#   2. **契约检查独立成 job** —— `utils/contract_check.py` 仅用标准库，
+#      秒级完成且零安装成本；它 FAIL 即说明"文档与代码漂移"，属设计红线。
+#   3. 两个 job 并行，任一失败即红。
+# ============================================================
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:        # 支持手动触发
+
+# 同一分支的新 push 取消上一次未完成的运行，节省额度
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ------------------------------------------------------------
+  # Job 1：契约漂移检查（零依赖，秒级）
+  #   校验「设计_从零系列/09_模块契约手册.md」与代码零漂移：
+  #   文档接口表里写的符号必须存在于代码；文档里的行号引用不得越界。
+  # ------------------------------------------------------------
+  contract:
+    name: 契约漂移检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # 该脚本只 import 标准库（argparse/ast/re/pathlib 等），无需 pip install
+      - name: 运行 contract_check
+        run: python utils/contract_check.py
+
+  # ------------------------------------------------------------
+  # Job 2：单元测试（L1）
+  #   `tests/unit` 对外部依赖全部打桩，是本项目最快的回归门禁。
+  # ------------------------------------------------------------
+  unit:
+    name: 单元测试 L1
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      # torch 不在 requirements.txt 内（体积大且需官方 CPU 索引），必须先单独装，
+      # 否则 transformers 会从 PyPI 拉取默认版本（与本项目 CPU 套装不匹配）。
+      - name: 安装 PyTorch（CPU 版）
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      # requirements-dev.txt 以 `-r requirements.txt` 引入全部生产依赖，再补测试框架
+      - name: 安装项目依赖 + 测试依赖
+        run: pip install -r requirements-dev.txt
+
+      - name: 运行单元测试
+        run: pytest tests/unit -q
