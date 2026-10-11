@@ -1,0 +1,36 @@
+{
+  "_meta": {
+    "name": "agent_contracts",
+    "version": "1.0",
+    "milestone": "M16",
+    "defect": "D18",
+    "purpose": "四基元（bill/stat/price/finance）的必需参数契约。plan_node 据此产出 missing —— 只判『缺不缺』，不填参数（保子 Agent 入参契约不变）。",
+    "design_doc": "设计/14_意图层能力补齐与追问上移方案.md §3.2",
+    "contract_doc": "设计_从零系列/09_模块契约手册.md §2.14",
+    "format": "JSON Schema 形态，与 Function Calling 工具描述同构，便于将来迁移",
+    "note": "读失败时 config.AGENT_CONTRACTS 退化为 {} —— _check_contract 随即退化为「只看 LLM 自报」，不阻断主链路。"
+  },
+  "bill": {
+    "required": [],
+    "required_by_sub_type": {
+      "add": ["amount"]
+    },
+    "note": "add 需金额；edit/delete 常无新金额 —— agents/bill_agent/nodes.py:276 已放宽『必须有金额』的前置拦截。"
+  },
+  "stat": {
+    "required": [],
+    "required_by_sub_type": {},
+    "note": "统计查询无强制必需参数（时间范围缺省由 stat_agent 兜底）。"
+  },
+  "price": {
+    "required": [],
+    "required_by_sub_type": {},
+    "amount_optional": true,
+    "note": "★M18 起 amount 非必需：有品类无金额时走「价位查询」分支（返回本地参考均价，不做溢价率判断）。见 设计/16 §3 与 price_agent/nodes.py 的 price_query_mode。"
+  },
+  "finance": {
+    "required": [],
+    "required_by_sub_type": {},
+    "note": "分析建议无强制必需参数。"
+  }
+}

@@ -1,0 +1,61 @@
+name: test
+
+# ★占位外部模型配置（CI 无密钥）——理由同 ci.yml：
+#   tests/conftest.py 强制 DISABLE_LOCAL_LLM=1，而 agents/*/nodes.py 在 import 期调
+#   context_window_for() → ModelRouter.resolve()；「本地被封 + 外部未配置」会抛 RuntimeError，
+#   导致 pytest 采集中断（exit 2）。占位值使 EXTERNAL_LLM_ENABLED=True，单测不联网故安全。
+env:
+  BILLAGENT_EXT_LLM_BASE_URL: https://example.invalid/v1
+  BILLAGENT_EXT_LLM_API_KEY: ci-dummy-key
+
+# 触发时机：push 到主分支 / 任何 PR / 手动触发
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          # ★必须先装 CPU 版 torch：requirements.txt 里的 transformers/sentence-transformers
+          #   会解析 torch 依赖，若不先装 CPU 版，pip 会从 PyPI 拉默认（CUDA）版——体积大、
+          #   与项目 CPU 套装不匹配，且显著拖慢 CI。
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          # ★复用 requirements-dev.txt 作单一来源：它以 `-r requirements.txt` 引入全部生产依赖，
+          #   并补上测试框架（含 **pytest-asyncio**）。
+          #   背景：pytest.ini 设 asyncio_mode=strict，且 tests/unit 大量使用
+          #   @pytest.mark.asyncio；缺 pytest-asyncio 会导致全部异步用例失败
+          #   （本仓库实测：缺插件时 202 failed）。生产依赖 requirements.txt 不含它，必须由 dev 引入。
+          pip install -r requirements-dev.txt
+
+      # ① 契约漂移检测：设计文档里写的符号/行号/签名必须与代码一致
+      #    成本低、不需外部服务，放在单测之前做快速失败
+      - name: 契约漂移检测（contract_check）
+        run: |
+          python utils/contract_check.py
+
+      # ② 单元测试 + 覆盖率统计
+      #    只统计业务代码，不统计 tests/ 自身（否则虚高）
+      #    --cov-report=term-missing 会列出未覆盖的行号，便于定位薄弱区
+      - name: 单元测试 + 覆盖率
+        run: |
+          pytest tests/unit -q \
+            --cov=agents --cov=mcpGateway --cov=startup \
+            --cov=utils --cov=memory --cov=coreModules \
+            --cov-report=term-missing

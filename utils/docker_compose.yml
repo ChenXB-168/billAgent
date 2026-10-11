@@ -1,0 +1,110 @@
+# 注：Compose V2 起 `version` 字段已废弃（保留会打 obsolete warning），故移除。
+#      如你的 Docker 很旧（< 20.10）需要它，请自行加回 `version: '3.8'`。
+
+# 统一网络：所有容器加入同一网桥，容器内互通，外部按需暴露
+networks:
+  bill_agent_net:
+    driver: bridge
+
+# 数据卷：持久化数据，容器删除数据不丢失
+volumes:
+  ollama_data:          # Ollama 模型持久化（GGUF/私有模型）
+  redis_data:           # Redis 会话数据持久化
+  app_logs:             # 项目日志持久化
+  app_database:         # SQLite 数据库持久化
+
+services:
+  # 1. Ollama 服务：本地大模型运行环境（常驻）
+  ollama:
+    image: ollama/ollama:latest
+    container_name: bill-ollama
+    restart: always
+    networks:
+      - bill_agent_net
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"  # 对外暴露默认端口，本地开发直接访问
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_PORT=11434
+    # 资源限制（根据机器配置调整，低配机器可删除）
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4G
+
+  # 2. Redis 服务：短期会话记忆、上下文存储
+  # ⚠️ 当前代码未接线 Redis —— `memory/short_memory.py` 是进程内 dict 实现
+  #   （SESSION_MEM / SESSION_DRAFT_CACHE / SESSION_ASK_ROUND），`memory/redis_client.py`
+  #   为空文件，`config.REDIS_*` 为预留常量。本服务定义是将来切换外部会话存储的演进路径；
+  #   届时须同步接线 short_memory，否则部署配置会承诺一个不存在的实现。
+  redis:
+    image: redis:alpine
+    container_name: bill-redis
+    restart: always
+    networks:
+      - bill_agent_net
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes  # 开启AOF持久化
+
+  # 3. 项目主服务：记账AI中台（Python 应用）
+  bill-agent-app:
+    build:
+      # 本 compose 位于 utils/，构建上下文必须指向项目根，Dockerfile 路径相对
+      # context 解析为 utils/Dockerfile；否则 Dockerfile 里的 `COPY requirements.txt .`
+      # 会以 utils/ 为上下文而找不到文件。
+      context: ..
+      dockerfile: utils/Dockerfile
+    container_name: bill-agent-main
+    restart: always
+    depends_on:
+      - ollama                  # 仅依赖 ollama；redis 当前未被代码消费（见下方 redis 服务说明）
+    networks:
+      - bill_agent_net
+    volumes:
+      # volumes 的相对路径相对**本 compose 文件所在目录**（utils/），故用 `..` 指向项目根；
+      # 若写成 `./`，挂进容器的是 utils/，项目代码没进去，启动时找不到 webUI/app.py。
+      - ../:/app                # 代码热挂载（开发模式：改宿主机代码立即生效）
+      - app_logs:/app/logs      # 日志目录挂载（命名卷）
+      # ⚠️ 本行用**独立的命名卷**覆盖上面挂进来的 /app/database ——
+      #   即容器使用自己的数据库（首次运行为空），**不共享宿主机的 database/bill.db**。
+      #   如此设计是为规避 SQLite(WAL) 跨 "Windows 绑定挂载 ↔ Linux 容器" 的锁兼容问题。
+      #   若希望容器直接读写宿主机的账单库，注释掉下面这行即可（风险自担）。
+      - app_database:/app/database
+    # 环境变量：对齐 config.py 配置，覆盖默认地址（容器内域名访问）
+    environment:
+      - OLLAMA_HOST=ollama      # 容器内使用服务名访问Ollama，无需IP
+      - OLLAMA_PORT=11434
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    # Gradio WebUI 端口（7860）
+    ports:
+      - "7860:7860"
+    # 容器内无终端，须起 WebUI 而非 CLI 入口（`main.py` 走 `run_chat()` 需 stdin 交互，
+    # 会直接退出）；等价于宿主机的 `start_webui.bat`。
+    command: python -u webUI/app.py
+    # 注入 init 进程（tini）：容器内 PID 1 默认**不处理 SIGTERM 等信号**，
+    #   若 Python 直接当 PID 1，`docker stop` 时 SIGTERM **送不到** Python，
+    #   会在 10s 宽限期后被 SIGKILL 强杀。由 tini 负责**转发信号**给 Python，
+    #   并回收孤儿进程（Linux 容器标准实践）。
+    # ★M23（D26）修正认知偏差：tini **只解决「信号送达」与「僵尸回收」**，
+    #   **不解决「收到信号后执行清理」** —— 那取决于 Python 侧是否注册了 handler。
+    #   本项目的关闭链：tini 转发 SIGTERM → `webUI/app.py::_install_signal_handlers`
+    #   将其转为 KeyboardInterrupt → `main()` 的 `finally: shutdown()`
+    #   → `shutdown_system()` 收敛 4 个 worker + 关闭 3 个 MCP 常驻服务。
+    #   ★另注：**强杀**（`docker kill` / SIGKILL）下整条链都来不及执行，
+    #   该场景由 L3 内核层兜底（Linux `PR_SET_PDEATHSIG` / Windows Job Object，见 `设计/21`）。
+    init: true
+    # 就绪探针：WebUI 监听 7860 即视为健康。首次启动含 DB 校验 / 笔记索引 /
+    # MCP 常驻拉起 / 崩溃恢复等初始化，故给 60s 宽限期。
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket,sys; s=socket.socket(); s.settimeout(3); sys.exit(0 if s.connect_ex(('127.0.0.1',7860))==0 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s

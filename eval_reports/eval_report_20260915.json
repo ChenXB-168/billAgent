@@ -1,0 +1,54 @@
+{
+  "summary": {
+    "date": "2026-09-15",
+    "total_cases": 1,
+    "passed": 0,
+    "failed": 1,
+    "pass_rate": 0.0,
+    "avg_score": 3.0,
+    "avg_by_dim": {
+      "intent": 0.0,
+      "params": 0.0,
+      "semantics": 0.0,
+      "format": 2.0,
+      "no_hallucination": 1.0
+    },
+    "weakest_dim": {
+      "dim": "intent",
+      "avg": 0.0
+    },
+    "db_checked": 1,
+    "db_failed": 1,
+    "db_avg": 0.0,
+    "fail_cases": [
+      "single_bill_001"
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "single_bill_001",
+      "category": "单任务",
+      "user_input": "晚饭38元帮我记一下 [测试标记]",
+      "reply": "执行终止：任务规划解析失败：[connection] llm_base 连接失败，已尝试 2 次",
+      "dims": {
+        "intent": 0,
+        "params": 0,
+        "semantics": 0,
+        "format": 2,
+        "no_hallucination": 1
+      },
+      "total": 3,
+      "redline_violated": true,
+      "pass": false,
+      "run_id": "r17894854094667a4970",
+      "db_verify": {
+        "checked": true,
+        "soft": false,
+        "score": 0,
+        "detail": "用例执行期间无新增账单记录（写入缺失）"
+      },
+      "db_accuracy": 0,
+      "elapsed": 19.2
+    }
+  ]
+}

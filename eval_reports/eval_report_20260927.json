@@ -1,0 +1,52 @@
+{
+  "summary": {
+    "date": "2026-09-27",
+    "total_cases": 1,
+    "passed": 1,
+    "failed": 0,
+    "pass_rate": 100.0,
+    "avg_score": 8.0,
+    "avg_by_dim": {
+      "intent": 0.0,
+      "params": 2.0,
+      "semantics": 2.0,
+      "format": 2.0,
+      "no_hallucination": 2.0
+    },
+    "weakest_dim": {
+      "dim": "intent",
+      "avg": 0.0
+    },
+    "db_checked": 1,
+    "db_failed": 0,
+    "db_avg": 2.0,
+    "fail_cases": []
+  },
+  "cases": [
+    {
+      "case_id": "single_bill_001",
+      "category": "单任务",
+      "user_input": "晚饭38元帮我记一下 [测试标记]",
+      "reply": "好的，您晚饭的消费已成功记录，餐饮类别，金额38元。",
+      "dims": {
+        "intent": 0,
+        "params": 2,
+        "semantics": 2,
+        "format": 2,
+        "no_hallucination": 2
+      },
+      "total": 8,
+      "redline_violated": false,
+      "pass": true,
+      "run_id": "r17904418214928864a3",
+      "db_verify": {
+        "checked": true,
+        "soft": false,
+        "score": 2,
+        "detail": "记录准确，DB写入: amount=38.0, category=餐饮（id=649）"
+      },
+      "db_accuracy": 2,
+      "elapsed": 20.0
+    }
+  ]
+}
