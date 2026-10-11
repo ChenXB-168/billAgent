@@ -16,6 +16,10 @@
 pytest>=9.0
 # asyncio 支持；`pytest.ini` 设 asyncio_mode=strict，用例须显式 @pytest.mark.asyncio
 pytest-asyncio>=1.0
+# 覆盖率插件：CI（.github/workflows/test.yml）用 `--cov=...` 统计，
+#   ★缺它时 pytest 会把它当成"未知命令行参数"并以 **usage error（退出码 4）** 失败
+#   （2026-10-11 实际踩到：把安装源统一到本文件时漏了 pytest-cov）。
+pytest-cov>=4.0
 
 # ---------- 测试报告（可选） ----------
 # 用法：pytest tests/unit --html=report.html --self-contained-html
