@@ -61,35 +61,7 @@ Give me some saving tips
 
 ![Web UI: top bar + budget & preferences panel (collapsible) + chat area](image-2.png)
 
-```
-┌────────────────────────────────────────────────────────────────┐
-│  Expense Assistant                                 [ Exit ]    │
-├────────────────────────────────────────────────────────────────┤
-│  ▸ Budget & preferences                            (click)     │
-├────────────────────────────────────────────────────────────────┤
-│                                                                │
-│  You │ Log lunch 56 yuan                                       │
-│      │                                                         │
-│  AI  │ Logged ✅ "Food · lunch" 56 CNY                         │
-│      │ Food this month: X CNY (Z% of the Y monthly budget)     │
-│      │ Level: normal                                           │
-│      │                                                         │
-│  You │ How much did I spend this month?                        │
-│      │                                                         │
-│  AI  │ This month: X CNY over N entries                        │
-│      │ Food X (Z%) · Transport X (Z%) · Shopping X (Z%)        │
-│      │ MoM +A%                                                 │
-│      │                                                         │
-│  You │ Is 20 yuan for a taxi expensive?                        │
-│      │                                                         │
-│  AI  │ Transport · taxi 20 CNY: local average X CNY, +Z%       │
-│      │ Verdict: slightly above the local level                 │
-│                                                                │
-├────────────────────────────────────────────────────────────────┤
-│ [ Want to log one? Just type, e.g. "Log lunch 56" (Enter) ]    │
-│                              [ Send ] [ New session ]          │
-└────────────────────────────────────────────────────────────────┘
-```
+
 
 The UI has three parts: the **top bar**, **Budget & preferences** (a collapsible panel that writes config directly, bypassing the model), and the **conversation area**.
 
