@@ -21,7 +21,7 @@ Break natural language into executable tasks, hand them to multiple agents, and 
 | **Tool access** | A self-built tool-access layer unifies local functions and MCP services: one tool contract, one execution entry, protocol differences contained in the adapter layer |
 | **Numeric computation** | Amounts, totals, shares, budget progress and price premiums are **all produced by SQL and numeric code**; the model only handles intent understanding and wording |
 | **Anti-hallucination** | Before a reply goes out, every number is checked against a **number whitelist**; on violation it retries with correction, and if that still fails it falls back to deterministic template rendering |
-| **Model channel** | An external LLM (OpenAI-compatible, Zhipu GLM-4-Flash by default) is primary; a local Ollama small model is an optional offline / fallback channel — the full flow runs even without an API key |
+| **Model channel** | External LLM (OpenAI-compatible, Zhipu GLM-4-Flash by default). The local Ollama channel is **deprecated** (code kept for rollback) — an API key is required |
 
 ## The product: a bookkeeping assistant you can actually use
 
@@ -47,7 +47,7 @@ Give me some saving tips
 - [5. Where do these numbers come from](#5-where-do-these-numbers-come-from)
 - [6. Architecture (for the curious)](#6-architecture-for-the-curious)
 - [7. Five core designs](#7-five-core-designs)
-- [8. Measured results](#8-measured-results)
+- [8. Improvements (same-environment A/B)](#8-improvements-same-environment-ab)
 - [9. Directory structure](#9-directory-structure)
 - [10. Tests & evaluation](#10-tests--evaluation)
 - [11. Tech stack](#11-tech-stack)
@@ -58,6 +58,8 @@ Give me some saving tips
 ## 1. What it looks like
 
 ### Web UI (Gradio — open it in a browser)
+
+![Web UI: top bar + budget & preferences panel (collapsible) + chat area](image-2.png)
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -163,7 +165,7 @@ One sentence holds three intents: the system recognizes "log (2 entries) + stat 
 
 - Python **3.10+** (developed on 3.10.11)
 - **Default setup**: any OpenAI-compatible API — this project is verified with **Zhipu GLM-4-Flash** (recommended; see the config below)
-- Optional offline: [Ollama](https://ollama.com/) + a local small model (`qwen-bill-1.5-1.8b-q4km`); it falls back automatically when no API is configured
+- Local channel (Ollama + `qwen-bill-1.5-1.8b-q4km`): **deprecated**. The code and provider are kept for rollback but are not enabled by default
 
 ### Install
 
@@ -212,7 +214,7 @@ $env:BILLAGENT_EXT_FINANCE_MODEL="glm-4-flash"
 $env:BILLAGENT_FORCE_EXTERNAL="1"     # all agents use the external model; unset → only the orchestrator does, the rest fall back to local
 ```
 
-Without an API, the system falls back to the **local Ollama small model + local deterministic rendering** and the flow still runs (demo / offline) — a deliberate fallback in the architecture.
+**An external API must be configured**: the local small-model channel is **fully deprecated** (`BILLAGENT_DISABLE_LOCAL_LLM` defaults to `1`). Without an API key, `ModelRouter.resolve` raises immediately (fail fast, no silent degradation). To temporarily restore the local fallback (rollback): set `BILLAGENT_DISABLE_LOCAL_LLM=0`.
 
 You can also put these variables in a root `.env` (already wired via `load_dotenv()`); note that `.env` has lower priority than existing env vars, so pick one. `.env` holds the key — **never commit it**.
 
@@ -271,8 +273,8 @@ Three initial constraints, plus **one corrected by reality**:
 |---|---|
 | Numbers must not be wrong | The fact layer (SQL/numeric) and the expression layer (LLM) are **physically separated**, with a whitelist gate in between |
 | The local small model is limited | Split big tasks into small ones, specialize (1 orchestrator + 4 sub-agents), back it with deterministic computation |
-| Must not depend on external services (**initial constraint**) | Initially wanted to be fully local with zero dependencies: a 1.8B base + QLoRA fine-tuning, i.e. Ollama loading `qwen-bill-1.5-1.8b-q4km` |
-| Structured output like intent recognition is beyond a small model (**reality correction**) | The 1.8B model produced unstable JSON and was hard to debug; a single inference took up to 189s and 4 e2e cases took 36 minutes (recorded in the `config/config.py` comments). So **the default is now an external LLM API (Zhipu GLM-4-Flash, OpenAI-compatible)**, with the local small model demoted to an optional offline channel that still keeps the flow alive without an API |
+| Must not depend on external services (**initial constraint, later overturned by reality**) | Initially wanted to be fully local with zero dependencies: Ollama loading a 1.8B base (`qwen-bill-1.5-1.8b-q4km`); the **fine-tuning route was only evaluated, never implemented** |
+| Structured output like intent recognition is beyond a small model (**reality correction**) | The 1.8B base was unstable for intent parsing / structured output and hard to debug (timing and failure cases are recorded in the `config/config.py` comments). So **an external LLM API (Zhipu GLM-4-Flash, OpenAI-compatible) is now the primary channel**, and the local channel is **deprecated** (code kept for rollback) |
 
 > Evolution traces: the `FORCE_EXTERNAL` (all agents external) and `DISABLE_LOCAL_LLM` (seal the local channel, for troubleshooting) switches are rollback toggles left by this "local-first → external-first" evolution.
 
@@ -499,7 +501,7 @@ flowchart TB
         M2["llm_finance"]
         M3["sql_bill"]
     end
-    EXT["External LLM API: Zhipu GLM-4-Flash (default)<br/>Ollama local small model (optional/offline)<br/>SQLite / FAISS / personal notes"]
+    EXT["External LLM API: Zhipu GLM-4-Flash (current channel)<br/>SQLite / FAISS / personal notes"]
 
     ORCH2 -->|queue per agent| WK
     WK -->|ToolRegistry| MCP
@@ -510,21 +512,21 @@ The three changes have a strict order: the bus goes from polling to event-driven
 
 ---
 
-## 8. Measured results
+## 8. Improvements (same-environment A/B)
 
 Same-environment A/B:
 
 | Item | Before | After | Gain |
 |---|---|---|---|
-| A2A delivery latency (P95) | 94.9 ms (0.1s polling) | 0.10 ms (event-driven) | **954×** |
-| Idle wakeups | 36 /s | 0 /s | idle spin eliminated |
-| MCP calls | stdio cold start 26–29 s every call | resident HTTP, ~6 s to ready (once) | end-to-end 76.6 s → 58.5 s (**−24%**) |
-| Concurrent read/write · cross-process | read/write mutually exclusive, prone to `database is locked` | WAL + `busy_timeout=5000` | reads do not block writes; two processes each writing 80 rows, **zero lock errors** |
-| Multi-task scheduling | one at a time, latency = ΣT | batch per wave, latency = max(T) | measured 10.2 s → **7.6 s** (results identical) |
-| Crash recovery | lost / duplicated entries | state machine + `task_id` idempotency | recovers after kill -9; re-dispatch does not double-log |
+| A2A delivery latency | polling-based, bound by the polling period (tens of ms) | event-driven wakeup | down to **sub-millisecond** |
+| Idle wakeups | periodic polling | suspend while idle | idle spin eliminated |
+| MCP calls | stdio cold start on every call (tens of seconds) | resident HTTP, ready once | end-to-end latency clearly reduced |
+| Concurrent read/write · cross-process | read/write mutually exclusive, prone to `database is locked` | WAL + `busy_timeout=5000` | reads no longer block writes; no lock errors observed under cross-process concurrent writes |
+| Multi-task scheduling | one at a time, latency = ΣT | batch per wave, latency = max(T) | scheduling time clearly reduced for multi-task requests (results identical) |
+| Crash recovery | possible lost / duplicated entries | state machine + `task_id` idempotency | after an abnormal termination, restart reconciles and recovers; re-dispatch does not double-log |
 
-> **Measurement basis for delivery latency**: `bench/bench_a2a_latency.py`, 300 samples, synchronous round trip with random arrival times (simulating "message arrival relative to the polling period is random"), reporting P50/P95/P99.
-> Measured P50 47.6 ms / P95 94.9 ms / mean 50.4 ms, matching the theoretical values for "100 ms polling + random arrival → uniform latency" (50 / 95 / 50 ms).
+> **Basis**: the table compares before/after under the same environment; figures come from local observation. Latency metrics are sampled by `bench/bench_a2a_latency.py` (percentiles); the rest are end-to-end latency comparisons.
+> **This is a single-machine, single-user personal project with a limited sample size — the numbers are for side-by-side comparison only and are not a production performance claim.**
 > Reproduce: `.\venv\Scripts\python.exe bench\bench_a2a_latency.py` (results are also written to `bench/bench_result.txt`).
 
 ---
@@ -573,15 +575,25 @@ config/         central config (ports / timeouts / model params / permission map
 
 | Layer | Scale | Current result | Preconditions |
 |---|---|---|---|
-| **Unit** | **44 files** | **457 passed / ~38s** | none |
+| **Unit** | **37 files** | **620 passed / ~60s**; business-code statement coverage **79%** | none |
 | **Integration** | **4 files** | depends on services | start the system first; when services are down it reports `ConnectError` (a connection failure, not a functional defect) |
 | **e2e** | **9 files** | depends on the model | resident MCP + workers + a local or external model |
-| **Retrieval eval** | 13 queries | hit@1 61.54% / hit@3 100% / recall@5 92.86% | needs the embedding model |
-| **Answer quality** | 12 cases | local rendering **12/12 (avg 10.0)**; external model + Plan C **12/12 (avg 9.83)** | needs a model; slow |
+| **Retrieval eval · notes** | 55 notes / 111 chunks, 40 self-built queries (37 single-answer + 3 cross-note multi-answer) | hybrid hit@5 **100%**; cross-note multi-answer recall@10 **88.9%** | needs the embedding model |
+| **Retrieval eval · long-term memory** | 56 self-built queries (grouped by query type) | recall@3 **85.7%** / recall@5 **94.6%**; rule-based queries (34) **97.1%** | needs the embedding model |
+| **Answer quality** | 12 self-built cases | local rendering 12/12; external model 12/12 | needs a model; slow |
+
+The two retrieval evaluations are **run separately**: the notes library holds preferences the user wrote down, is searched only for **financial advice**, and uses RRF rank fusion; long-term memory holds monthly summaries aggregated from bills, is searched **on every request** (in the plan stage), and uses weighted fusion plus a time signal. Their content source, retrieval timing and fusion strategy all differ, so each has its own ground truth.
+
+Reproduce:
+```powershell
+.\venv\Scripts\python.exe -m pytest tests/unit/test_user_docs_retrieval_scale.py -s   # notes (55 notes / 40 queries)
+.\venv\Scripts\python.exe evaluation\seed_memory_data.py                                # long-term: seed 8 memories first
+.\venv\Scripts\python.exe evaluation\memory_recall_eval_50.py                           # long-term (56 queries, grouped)
+```
 
 Retrieval baseline archive: `eval_reports/l2_baseline_userdocs_20260904.txt`.
 
-Unit tests include `test_contract_check.py`: **contract drift detection** — a mismatch between the design spec and the implementation FAILs the build, using tests to guard the architecture red line.
+Unit tests include `test_contract_check.py`: **doc↔code drift detection** — symbols written in the design docs must exist in the code, line references must not go out of range, and signature parameters must not drift; a mismatch FAILs the build. (It guards "docs are not stale" — **it is not a permission boundary**.)
 
 ---
 
@@ -591,7 +603,7 @@ Unit tests include `test_contract_check.py`: **contract drift detection** — a 
 |---|---|---|
 | Orchestration | LangGraph | one StateGraph per agent; the orchestrator has plan / dispatch / wait / collect |
 | Tool protocol | MCP (FastMCP) | 3 resident services, Streamable HTTP; a stdio rollback switch |
-| Model access | self-built ChatModel harness | capability contract + routing + parameter normalization + structured errors; external OpenAI-compatible (Zhipu GLM-4-Flash) / local Ollama |
+| Model access | self-built ChatModel harness | capability contract + routing + parameter normalization + structured errors; currently external OpenAI-compatible (Zhipu GLM-4-Flash); local channel deprecated but kept for rollback |
 | Storage | SQLite ×2 + FAISS | WAL concurrency; long-term memory vector index + pkl text |
 | Retrieval | BM25 + vectors (bge) | automatic fallback to BM25 when vectors are unavailable; never crashes |
 | UI | Gradio | port 7860, single-instance guard |
@@ -599,7 +611,7 @@ Unit tests include `test_contract_check.py`: **contract drift detection** — a 
 
 A few trade-offs worth calling out:
 
-- **Sub-agents are coroutines, not processes**: the main process does no heavy compute (inference is at the external API / local Ollama), so coroutines cover the IO wait; going multi-process would add IPC, state serialization and several times the memory.
+- **Sub-agents are coroutines, not processes**: the main process does no heavy compute (inference happens at the external API), so coroutines cover the IO wait; going multi-process would add IPC, state serialization and several times the memory.
 - **Parameters are never translated across channels**: local `num_predict` (a soft constraint) ≠ external `max_tokens` (a hard cap that includes reasoning). Synonyms are normalized, non-equivalents are filtered and warned — passing them through caused empty bodies on a reasoning model and burned tokens on repeated retries.
 - **Retries are classified first**: retriable (format errors / 5xx / 429 / empty response) go through a shared budget pool; non-retriable (401 / 400 / auth failures) short-circuit; side-effecting tools **never auto-retry** (to prevent double-logging).
 

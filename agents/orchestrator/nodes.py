@@ -45,7 +45,8 @@ def _log(stage: str, detail: str = ""):
         `flush=True` 强制实时刷新，保证长链路（plan→dispatch→wait→collect）排障时
         日志不被缓冲吞掉；真实业务路径专用，无任何持久化。
     入参说明：
-        stage (str)：阶段名，如 "plan_node 开始"、"派发任务"、"启发式裁剪后"。
+        stage (str)：阶段名，如 "plan_node 开始"、"派发任务"、"启发式裁剪后" /
+            "启发式裁剪跳过"（后者表示 M17 按 inferable 档跳过 prune，见 plan_node）。
         detail (str)：阶段明细（任务名/任务 id 前 8 位/异常信息等），默认 ""。
     返回值说明：
         无（副作用为向 stdout 打印一行日志）。
@@ -252,6 +253,14 @@ REVIEW_HINT_KEYWORDS = [
     "正常吗", "正常不", "算正常吗", "算贵吗",
     # 超支/花多类："是不是花多了/超支了吗"——是分析诉求，不是记账指令
     "花多了", "花超了", "花得值吗", "花超支", "超支了吗", "超支吗", "超预算", "超标了",
+    # ★2026-10-13 补漏：「是否偏高 / 偏高吗 / 偏贵 / 贵了吗」与表中"贵吗/贵不贵"属**同一语义类**
+    #   （都问"这笔消费是否高于合理水平"），原表遗漏 → 带金额的合理性疑问被判成"纯比价"，
+    #   finance 在 prune 里被误裁、只剩 price。
+    #   实测来源：e2e `test_e2e_single_bill_no_extra` 的模型片段 "奶茶15块 是否偏高" 命不中任何词表；
+    #   回归单测见 `tests/unit/test_orchestrator_plan.py::test_prune_review_synonym_gaopian_...`。
+    #   ★刻意**不写裸"高"字**：「高铁 / 最高 / 高德」会被误命中，与本模块"窄口径关键词表"的
+    #   既有原则一致（对照 `_is_force_bill` 的排除表同样逐词枚举、不做单字泛化）。
+    "偏高", "偏贵", "高了吗", "高了没", "贵了吗", "贵了没",
 ]
 # 记账后自动预警阈值：预算充足→犒劳提醒，接近/超支→预警，无预算→不打扰
 BUDGET_ALERT_THRESHOLDS = {
@@ -1769,9 +1778,21 @@ async def plan_node(state: OrchState):
     # ========== 启发式业务裁剪：纠正小模型的语义误判 ==========
     # ★M17：inferable 档的保守规划已通过依据校验（参数齐备 + 有话语依据），
     #   跳过启发式裁剪——prune 的关键词表可能误裁受信的只读规划（如"预算"场景的 stat）。
-    if not (INTENT_INFERABLE_ENABLED and fit_level == "inferable" and _conservative_ok):
+    _prune_skipped = bool(INTENT_INFERABLE_ENABLED and fit_level == "inferable"
+                          and _conservative_ok)
+    if _prune_skipped:
+        # ★2026-10-13：日志必须能区分「裁了」与「按 M17 跳过」。
+        #   原实现无条件打 "启发式裁剪后"，导致 tasks 未变时无法判断究竟是
+        #   ①被整段跳过、还是 ②执行了但没裁掉任何任务 —— 二者排障含义完全相反。
+        #   实测踩坑：e2e `test_e2e_single_bill_no_extra` 出现 ['price','finance'] 时，
+        #   日志显示"启发式裁剪后 tasks=['price','finance']"，极易误读成"prune 放行了 finance"，
+        #   实际是 prune 根本没执行（fit_level=inferable + 依据校验通过）。
+        _log("启发式裁剪跳过",
+             f"M17: fit_level=inferable 且依据校验通过 → 不做裁剪 "
+             f"tasks={[t.get('name') for t in fixed_tasks]}")
+    else:
         fixed_tasks = prune_tasks_by_heuristics(user_text, fixed_tasks)
-    _log("启发式裁剪后", f"tasks={[t.get('name') for t in fixed_tasks]}")
+        _log("启发式裁剪后", f"tasks={[t.get('name') for t in fixed_tasks]}")
 
     # ========== 空任务拦截：收入/拒绝记账场景给确定性文案，不走通用兜底 ==========
     if not fixed_tasks:

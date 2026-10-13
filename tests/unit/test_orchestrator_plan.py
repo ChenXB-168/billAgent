@@ -895,6 +895,28 @@ def test_prune_consume_price_word_keeps_price_and_finance():
         assert _names(out) == ["price", "finance"], f"{text} 应同时比价与分析: {_names(out)}"
 
 
+def test_prune_review_synonym_gaopian_keeps_price_and_finance():
+    """
+    函数功能与逻辑描述：
+        验证「偏高 / 偏贵」类**同义改写**的合理性疑问被 REVIEW 词表识别（★2026-10-13 补漏）：
+        带金额时应同时保留 price 与 finance，与 `test_prune_consume_price_word_keeps_price_and_finance`
+        （"贵不贵 / 值不值 / 划算吗"）行为完全一致。
+        背景（为什么必须有这条）：原 `REVIEW_HINT_KEYWORDS` 只收录"贵吗 / 贵不贵"，
+        遗漏"是否偏高"这类等价表述 → 带金额的合理性疑问在 prune 里被判成"纯比价"、
+        finance 被误裁只剩 price。该缺口由 e2e 实测暴露（`test_e2e_single_bill_no_extra`
+        的模型片段 "奶茶15块 是否偏高" 命不中任何词表）。
+    入参说明：
+        无（pytest 自动发现并调用，无需外部入参）；用例内以 for 循环覆盖三种同义表述，
+        tasks 固定为单条 price（模拟模型只规划了比价）。
+    返回值说明：
+        无（断言通过即用例成功，抛出断言异常即失败）。
+    """
+    for text in ("奶茶15块 是否偏高", "这顿火锅120偏高吗", "打车80是不是偏贵"):
+        tasks = [{"name": "price", "raw_segments": [text], "operate_sub_type": "query"}]
+        out = prune_tasks_by_heuristics(text, tasks)
+        assert _names(out) == ["price", "finance"], f"{text} 应同时比价与分析: {_names(out)}"
+
+
 def test_prune_price_word_no_amount_goes_price():
     """
     函数功能与逻辑描述：
